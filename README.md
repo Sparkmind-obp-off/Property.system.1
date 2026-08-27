@@ -30,7 +30,7 @@ PROPERTY → PROPERTY INTELLIGENCE → TARGET TENANT → OFFER → LEAD
 ## URLs
 
 - **Local dev**: http://localhost:3000
-- **Sandbox preview**: https://3000-ir0f8iuvvw2sor03y8odw-cc2fbc16.sandbox.novita.ai
+- **Sandbox preview**: https://3000-isuomxvzzo5zeqw08xwul-02b9cc79.sandbox.novita.ai
 - **GitHub**: https://github.com/Sparkmind-obp-off/Property.system.1
 - **Production (Cloudflare Pages)**: https://property-system.pages.dev
 - **Health check**: https://property-system.pages.dev/api/v1/health

@@ -1,14 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "webapp",
+  "name": "property-system",
   "compatibility_date": "2024-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "pages_build_output_dir": "./dist",
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "webapp-production",
-      "database_id": "local-development-placeholder"
+      "database_name": "property-system-production",
+      "database_id": "bb6b2fde-b1a0-49c4-bfe4-bc59523c208c"
     }
   ]
 }

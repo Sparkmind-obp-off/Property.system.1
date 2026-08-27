@@ -32,7 +32,8 @@ PROPERTY → PROPERTY INTELLIGENCE → TARGET TENANT → OFFER → LEAD
 - **Local dev**: http://localhost:3000
 - **Sandbox preview**: https://3000-ir0f8iuvvw2sor03y8odw-cc2fbc16.sandbox.novita.ai
 - **GitHub**: https://github.com/Sparkmind-obp-off/Property.system.1
-- **Production (Cloudflare Pages)**: _belum dideploy_
+- **Production (Cloudflare Pages)**: https://property-system.pages.dev
+- **Health check**: https://property-system.pages.dev/api/v1/health
 
 ## Login (dev seed only — §44)
 
@@ -44,7 +45,20 @@ PROPERTY → PROPERTY INTELLIGENCE → TARGET TENANT → OFFER → LEAD
 | ANALYST | `analyst@propertysystem.local` | `Analyst#2026` |
 | ADMIN | `admin@propertysystem.local` | `Admin#2026` |
 
-Kredensial ini **hanya untuk development**. Produksi wajib pakai user asli.
+Kredensial ini **hanya untuk development** (berasal dari `seed.sql`) dan **tidak pernah**
+diterapkan ke produksi (§44).
+
+## Login (production bootstrap)
+
+Database produksi hanya berisi *reference data*: 5 role + 1 user ADMIN bootstrap.
+Nol fixture bisnis (0 property / tenant / lead), sesuai §44.
+
+| Role | Email | Password |
+| --- | --- | --- |
+| ADMIN | `admin@property-system.app` | dibuat via `scripts/gen-admin-credential.mjs` — tidak pernah di-commit (§45) |
+
+Password bootstrap **wajib dirotasi setelah login pertama**. Seluruh user lain harus
+dibuat lewat aplikasi (`POST /api/v1/users`), bukan lewat SQL.
 
 ## Architecture
 
@@ -269,17 +283,41 @@ dibatalkan (harus di-end), dan otorisasi per-role ditegakkan server-side.
 ## Deployment
 
 - **Platform**: Cloudflare Pages (Workers runtime) + D1
-- **Status**: ❌ belum dideploy ke produksi
-- **Build output**: `dist/`
-- **Secrets**: `JWT_SECRET` wajib di-set sebagai secret produksi
-  (`wrangler pages secret put JWT_SECRET`); lihat `.env.example`. Secrets
-  tidak pernah di-commit (§45).
+- **Status**: ✅ ACTIVE — https://property-system.pages.dev
+- **Cloudflare Pages project**: `property-system` (production branch `main`)
+- **D1 database**: `property-system-production` (binding `DB`), 7 migrasi applied
+- **Build output**: `dist/` (`_worker.js` ~187 kB)
+- **Secrets**: `JWT_SECRET` di-set sebagai Pages secret produksi
+  (`wrangler pages secret put JWT_SECRET`); lihat `.env.example`. Secrets tidak
+  pernah di-commit (§45).
+
+### First-time production setup
 
 ```bash
-npm run db:migrate:prod      # migrasi D1 produksi
-npm run build
-npx wrangler pages deploy dist --project-name <project>
+npx wrangler d1 create property-system-production          # catat database_id → wrangler.jsonc
+npx wrangler pages project create property-system --production-branch main
+
+npm run db:migrate:prod                                    # 7 migrasi → D1 remote
+npm run db:bootstrap:prod                                  # reference data: 5 roles
+
+node scripts/gen-admin-credential.mjs                      # password + PBKDF2 hash
+# insert user ADMIN memakai hash tersebut (lihat header bootstrap-production.sql)
+
+npx wrangler pages secret put JWT_SECRET --project-name property-system
 ```
+
+### Redeploy
+
+```bash
+npm run build
+npm run deploy:prod
+```
+
+### Production data policy (§44)
+
+`seed.sql` adalah fixture **development** dan tidak pernah dijalankan terhadap D1
+remote. Produksi hanya di-bootstrap dengan reference data
+(`scripts/bootstrap-production.sql`) — nol property/tenant/lead palsu.
 
 ## Traceability
 

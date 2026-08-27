@@ -13,6 +13,7 @@ import { logger } from 'hono/logger'
 import { fail } from './shared/http'
 import { requestId } from './shared/middleware'
 import { ErrorCode } from './shared/errors'
+import { APP_VERSION } from './shared/version'
 import type { Bindings, Env } from './shared/types'
 
 import { identityRoutes } from './modules/identity/api/identity.routes'
@@ -49,7 +50,13 @@ const api = new Hono<Env>()
 
 api.get('/health', (c) =>
   c.json({
-    data: { status: 'ok', system: 'PS-MASTER-001', version: 'v1', request_id: c.var.requestId },
+    data: {
+      status: 'ok',
+      system: 'PS-MASTER-001',
+      version: 'v1',
+      app_version: APP_VERSION,
+      request_id: c.var.requestId
+    },
     meta: {}
   })
 )

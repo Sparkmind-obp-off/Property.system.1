@@ -10,6 +10,13 @@ export interface Bindings {
   ASSETS?: Fetcher
   JWT_SECRET?: string
   JWT_TTL_SECONDS?: string
+  /**
+   * Admin bootstrap inputs (PS-MASTER-001 §3, §6). Supplied as Cloudflare
+   * secrets. Read ONLY by the bootstrap mechanism — never returned by an API,
+   * never rendered, never logged.
+   */
+  ADMIN_EMAIL?: string
+  ADMIN_PASSWORD?: string
 }
 
 export interface AuthUser {

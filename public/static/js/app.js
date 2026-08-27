@@ -43,7 +43,8 @@ const SCREENS = [
   { path: '/analytics', perm: 'analytics.read', load: () => import('./screens/analytics.js'), fn: 'analyticsScreen' },
 
   { path: '/settings/users', perm: 'user.read', load: () => import('./screens/settings.js'), fn: 'usersScreen' },
-  { path: '/settings/audit', perm: 'audit.read', load: () => import('./screens/settings.js'), fn: 'auditScreen' }
+  { path: '/settings/audit', perm: 'audit.read', load: () => import('./screens/settings.js'), fn: 'auditScreen' },
+  { path: '/settings/system', perm: 'user.manage', load: () => import('./screens/system.js'), fn: 'systemStatusScreen' }
 ]
 
 function registerRoutes() {
@@ -92,6 +93,23 @@ function registerRoutes() {
   })
 }
 
+/**
+ * Forced credential rotation (§8). A bootstrap or admin-reset password is a
+ * one-time entry ticket, so the app blocks further use until it is replaced.
+ * The dialog is not dismissible and reappears on every navigation until done.
+ */
+async function enforcePasswordRotation() {
+  if (!session.user?.must_change_password) return
+  const { openChangePasswordForm } = await import('./screens/system.js')
+  openChangePasswordForm(
+    () => {
+      toast('Kredensial bootstrap telah dirotasi.', 'ok')
+      dispatch()
+    },
+    { forced: true }
+  )
+}
+
 /** First screen after login: the highest-privilege landing the role can open. */
 function landingPath() {
   if (session.can('analytics.read')) return '/dashboard'
@@ -108,9 +126,10 @@ async function enterApp() {
     location.hash = `#${landingPath()}`
     // hashchange will dispatch; but if the hash was already identical, force it.
     await dispatch()
-    return
+  } else {
+    await startRouter()
   }
-  await startRouter()
+  await enforcePasswordRotation()
 }
 
 function showLogin() {

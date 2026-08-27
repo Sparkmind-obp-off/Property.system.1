@@ -127,6 +127,12 @@ export async function usersScreen() {
         if (u) openEffectivePermissions(u, permByRole)
       })
     )
+    body.querySelectorAll('[data-manage]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const u = users.find((x) => x.id === b.dataset.manage)
+        if (u) openUserManagement(u, users, reload)
+      })
+    )
   }
 
   document.getElementById('roles-host').innerHTML = renderRoles(roles)
@@ -176,11 +182,22 @@ function renderUserRow(u, permByRole) {
         ? u.roles.map((r) => badge(r, { tone: r === 'ADMIN' ? 'danger' : 'brand' })).join(' ')
         : '<span class="badge warn">tanpa peran</span>'
     }</td>
-    <td>${badge(u.status)}</td>
+    <td>
+      ${badge(u.status)}
+      ${u.must_change_password ? '<span class="badge warn" title="Kredensial bootstrap/reset belum dirotasi">rotasi tertunda</span>' : ''}
+    </td>
     <td class="cell-sub nowrap">${esc(fmtDateTime(u.created_at))}</td>
     <td class="right">
-      <button class="btn sm" data-perms="${attr(u.id)}">
-        <i class="fa-solid fa-key"></i>${num(perms.size)}</button>
+      <div class="row tight nowrap" style="justify-content:flex-end">
+        <button class="btn sm" data-perms="${attr(u.id)}" title="Izin efektif">
+          <i class="fa-solid fa-key"></i>${num(perms.size)}</button>
+        ${
+          session.can('user.manage')
+            ? `<button class="btn sm" data-manage="${attr(u.id)}" title="Kelola pengguna">
+                 <i class="fa-solid fa-user-gear"></i></button>`
+            : ''
+        }
+      </div>
     </td>
   </tr>`
 }
@@ -336,6 +353,160 @@ export function openUserForm(onDone) {
             errBox.innerHTML = `<div class="inline-error">${esc(errorText(err))}</div>`
           }
         }
+      })
+    }
+  })
+}
+
+/* -------------------------- §10 user management --------------------------- */
+
+/**
+ * One place to perform every §10 admin function on a single account:
+ * EDIT · CHANGE ROLE · DISABLE / ENABLE · RESET CREDENTIAL.
+ * The panel states the consequence of each action before it is taken (§29).
+ */
+function openUserManagement(user, allUsers, onDone) {
+  const isSelf = session.user?.id === user.id
+  const activeAdmins = allUsers.filter(
+    (u) => u.status === 'ACTIVE' && (u.roles || []).includes('ADMIN')
+  )
+  const isLastAdmin = (user.roles || []).includes('ADMIN') && user.status === 'ACTIVE' && activeAdmins.length <= 1
+
+  openModal({
+    title: `Kelola Pengguna — ${user.name}`,
+    wide: true,
+    body: `
+      <div id="um-error"></div>
+      <div class="kv"><span>ID</span><b class="mono">${esc(user.id)}</b></div>
+      <div class="kv"><span>Status</span><b>${badge(user.status)}</b></div>
+      <div class="kv"><span>Peran</span><b>${(user.roles || []).map((r) => esc(r)).join(', ') || '—'}</b></div>
+      <div class="kv"><span>Kata sandi diperbarui</span><b>${esc(user.password_updated_at ? fmtDateTime(user.password_updated_at) : 'belum tercatat')}</b></div>
+      ${
+        user.must_change_password
+          ? '<div class="inline-warn" style="margin-top:8px"><i class="fa-solid fa-circle-exclamation"></i>Akun ini masih memakai kredensial bootstrap/reset dan belum dirotasi.</div>'
+          : ''
+      }
+      ${
+        isLastAdmin
+          ? '<div class="consequence" style="margin-top:10px"><i class="fa-solid fa-shield-halved"></i>Ini satu-satunya ADMIN aktif. Sistem menolak menonaktifkannya atau mencabut peran ADMIN-nya, karena sistem akan menjadi tidak terkelola.</div>'
+          : ''
+      }
+
+      <div class="sub-head" style="margin-top:14px">Profil</div>
+      <form id="um-profile" novalidate>
+        <div class="form-grid">
+          ${field({ name: 'name', label: 'Nama lengkap', required: true, full: true, value: user.name })}
+          ${field({ name: 'email', label: 'Email', type: 'email', required: true, full: true, value: user.email })}
+        </div>
+        <button class="btn" id="um-save-profile"><i class="fa-solid fa-floppy-disk"></i>Simpan Profil</button>
+      </form>
+
+      <div class="sub-head" style="margin-top:16px">Peran</div>
+      <form id="um-roles" novalidate>
+        <div class="form-grid">
+          ${field({
+            name: 'role',
+            label: 'Peran utama',
+            type: 'select',
+            required: true,
+            full: true,
+            value: (user.roles || [])[0] || 'OPERATOR',
+            hint: 'Mengubah peran langsung mengubah izin efektif akun ini pada permintaan berikutnya.',
+            options: ASSIGNABLE_ROLES.map((r) => ({ value: r, label: r }))
+          })}
+        </div>
+        <button class="btn" id="um-save-roles"><i class="fa-solid fa-user-tag"></i>Ubah Peran</button>
+      </form>
+
+      <div class="sub-head" style="margin-top:16px">Kredensial</div>
+      <form id="um-credential" novalidate>
+        <div class="form-grid">
+          ${field({
+            name: 'password',
+            label: 'Kata sandi baru',
+            type: 'password',
+            required: true,
+            full: true,
+            hint: 'Minimal 12 karakter. Sampaikan lewat kanal aman — sistem tidak menampilkannya lagi, dan pengguna wajib menggantinya saat login.'
+          })}
+        </div>
+        <button class="btn" id="um-reset"><i class="fa-solid fa-key"></i>Reset Kredensial</button>
+      </form>
+
+      <div class="sub-head" style="margin-top:16px">Akses</div>
+      <div class="inline-info">
+        Menonaktifkan akun lebih aman daripada menghapusnya: jejak audit atas nama
+        pengguna tetap utuh, tetapi akun tidak dapat login lagi.
+      </div>
+      <button class="btn ${user.status === 'ACTIVE' ? 'danger' : 'primary'}" id="um-toggle"
+        ${isSelf && user.status === 'ACTIVE' ? 'disabled title="Anda tidak dapat menonaktifkan akun sendiri"' : ''}>
+        <i class="fa-solid ${user.status === 'ACTIVE' ? 'fa-user-slash' : 'fa-user-check'}"></i>
+        ${user.status === 'ACTIVE' ? 'Nonaktifkan Akun' : 'Aktifkan Akun'}
+      </button>`,
+    footer: `<button class="btn" data-modal-close>Tutup</button>`,
+    onMount(root, close) {
+      const errBox = root.querySelector('#um-error')
+      const showErr = (err) => {
+        errBox.innerHTML = `<div class="inline-error">${esc(errorText(err))}</div>`
+      }
+
+      const submit = async (btn, label, fn) => {
+        errBox.innerHTML = ''
+        btn.disabled = true
+        const original = btn.innerHTML
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memproses…'
+        try {
+          await fn()
+          toast(label, 'ok')
+          close()
+          onDone()
+        } catch (err) {
+          btn.disabled = false
+          btn.innerHTML = original
+          showErr(err)
+        }
+      }
+
+      root.querySelector('#um-save-profile').addEventListener('click', (e) => {
+        e.preventDefault()
+        const raw = readForm(root.querySelector('#um-profile'))
+        submit(e.currentTarget, 'Profil diperbarui.', () =>
+          api.patch(`/users/${user.id}`, { name: raw.name, email: raw.email })
+        )
+      })
+
+      root.querySelector('#um-save-roles').addEventListener('click', (e) => {
+        e.preventDefault()
+        const raw = readForm(root.querySelector('#um-roles'))
+        submit(e.currentTarget, 'Peran diperbarui.', () =>
+          api.put(`/users/${user.id}/roles`, { roles: [raw.role] })
+        )
+      })
+
+      root.querySelector('#um-reset').addEventListener('click', (e) => {
+        e.preventDefault()
+        const form = root.querySelector('#um-credential')
+        const raw = readForm(form)
+        if (!raw.password || raw.password.length < 12) {
+          errBox.innerHTML = '<div class="inline-error">Kata sandi minimal 12 karakter.</div>'
+          return
+        }
+        submit(e.currentTarget, 'Kredensial direset. Pengguna wajib menggantinya saat login.', async () => {
+          try {
+            await api.post(`/users/${user.id}/reset-credential`, { password: raw.password })
+          } finally {
+            form.querySelectorAll('input[type="password"]').forEach((i) => (i.value = ''))
+          }
+        })
+      })
+
+      root.querySelector('#um-toggle').addEventListener('click', (e) => {
+        const next = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
+        submit(
+          e.currentTarget,
+          next === 'ACTIVE' ? 'Akun diaktifkan.' : 'Akun dinonaktifkan.',
+          () => api.patch(`/users/${user.id}/status`, { status: next })
+        )
       })
     }
   })

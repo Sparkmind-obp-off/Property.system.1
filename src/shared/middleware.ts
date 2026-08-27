@@ -15,6 +15,15 @@ export function jwtSecret(env: { JWT_SECRET?: string }): string {
   return env.JWT_SECRET || 'dev-only-insecure-secret-change-me'
 }
 
+/**
+ * Whether a real signing secret was configured, as opposed to the dev fallback.
+ * The §9 status panel reports this as CONFIGURED / DEFAULT_INSECURE — the value
+ * itself is never exposed.
+ */
+export function hasExplicitJwtSecret(env: { JWT_SECRET?: string }): boolean {
+  return typeof env.JWT_SECRET === 'string' && env.JWT_SECRET.length >= 16
+}
+
 export function jwtTtl(env: { JWT_TTL_SECONDS?: string }): number {
   const n = Number(env.JWT_TTL_SECONDS)
   return Number.isFinite(n) && n > 0 ? n : 43_200

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Property System — sistem operasional properti: Property → Right Tenant → Right Conversation → Right Action → Rental.">
+  <meta name="theme-color" content="#0f2233">
+  <title>Property System — Operational Console</title>
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="/static/css/app.css" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312557f'/%3E%3Cpath d='M8 22V13l8-5 8 5v9h-6v-6h-4v6H8z' fill='white'/%3E%3C/svg%3E">
+</head>
+<body>
+  <!-- Application root. The shell (sidebar + topbar + screen) is mounted by JS. -->
+  <div id="app">
+    <div class="boot">
+      <div class="boot-mark"><i class="fa-solid fa-building"></i></div>
+      <div class="boot-title">Property System</div>
+      <div class="boot-sub">Menyiapkan sesi…</div>
+    </div>
+  </div>
+  <div id="toasts"></div>
+
+  <noscript>
+    <div style="padding:24px;font-family:sans-serif">
+      Property System adalah aplikasi operasional interaktif dan memerlukan JavaScript aktif.
+    </div>
+  </noscript>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

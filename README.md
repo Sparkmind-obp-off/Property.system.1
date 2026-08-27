@@ -23,9 +23,12 @@ PROPERTY → PROPERTY INTELLIGENCE → TARGET TENANT → OFFER → LEAD
 | --- | --- |
 | Typecheck (`tsc --noEmit`) | ✅ clean |
 | Unit tests | ✅ 121/121 pass (7 files) |
+| Integration tests (bootstrap §3–§16, §35) | ✅ 20/20 pass |
 | Golden E2E flow (§42/§43) | ✅ 81/81 assertions pass |
 | UI smoke test (semua screen) | ✅ 22/22 screens OK |
-| Build (`vite build`) | ✅ `dist/_worker.js` ~187 kB |
+| Build (`vite build`) | ✅ `dist/_worker.js` ~201 kB |
+
+**Total automated tests: 141 pass (8 files) + 81 E2E assertions + 22 UI screens.**
 
 ## URLs
 
@@ -48,17 +51,39 @@ PROPERTY → PROPERTY INTELLIGENCE → TARGET TENANT → OFFER → LEAD
 Kredensial ini **hanya untuk development** (berasal dari `seed.sql`) dan **tidak pernah**
 diterapkan ke produksi (§44).
 
-## Login (production bootstrap)
+## Login (production) — Admin Bootstrap
 
-Database produksi hanya berisi *reference data*: 5 role + 1 user ADMIN bootstrap.
-Nol fixture bisnis (0 property / tenant / lead), sesuai §44.
+Produksi **tidak** memakai seed. Admin pertama dibuat otomatis oleh mekanisme
+**Admin Bootstrap** dari secret Cloudflare (§3, §4):
 
-| Role | Email | Password |
-| --- | --- | --- |
-| ADMIN | `admin@property-system.app` | dibuat via `scripts/gen-admin-credential.mjs` — tidak pernah di-commit (§45) |
+| Variabel (Cloudflare secret, env Production) | Fungsi |
+| --- | --- |
+| `ADMIN_EMAIL` | identitas Admin pertama |
+| `ADMIN_PASSWORD` | kredensial bootstrap (min. 12 karakter) |
+| `JWT_SECRET` | kunci penandatangan session |
 
-Password bootstrap **wajib dirotasi setelah login pertama**. Seluruh user lain harus
-dibuat lewat aplikasi (`POST /api/v1/users`), bukan lewat SQL.
+Alur:
+
+```
+SET SECRET (sekali) → DEPLOY → BUKA URL → LOGIN → ADMIN DASHBOARD
+                                                → ROTASI PASSWORD
+                                                → BUAT USER LAIN
+```
+
+Jaminan perilaku:
+
+- Jika belum ada ADMIN → dibuat dari secret.
+- Jika ADMIN sudah ada → **tidak** dibuat ulang, password **tidak** ditimpa,
+  sehingga redeploy tidak pernah mereset kredensial (§4, §35).
+- Password hanya disimpan sebagai hash PBKDF2; secret tidak pernah dikembalikan
+  API, dirender UI, atau ditulis ke log (§5, §37).
+
+Password bootstrap **wajib dirotasi setelah login pertama** lewat
+**Settings → Security → Change Password**. Seluruh user lain dibuat lewat
+aplikasi (`POST /api/v1/users`), bukan lewat SQL, dan **tanpa** perlu membuka
+Cloudflare lagi (§7, §12).
+
+Prosedur lengkap: **[`CLOUDFLARE_DEPLOYMENT.md`](./CLOUDFLARE_DEPLOYMENT.md)**.
 
 ## Architecture
 
@@ -115,6 +140,9 @@ Semua di bawah prefix `/api/v1`.
 | POST | `/auth/login` | Login, mengembalikan JWT |
 | POST | `/auth/logout` | Logout |
 | GET | `/auth/me` | Sesi + roles + permissions |
+| POST | `/auth/change-password` | Rotasi password sendiri (§14) |
+| GET | `/system/status` | Status sistem + bootstrap (ADMIN, §9) |
+| GET | `/system/public-status` | Diagnostik pra-login, non-sensitif (§16) |
 | GET | `/users` | Daftar user (ADMIN) |
 | POST | `/users` | Buat user (ADMIN) |
 | PATCH | `/users/:id` | Update user (ADMIN) |
@@ -285,11 +313,12 @@ dibatalkan (harus di-end), dan otorisasi per-role ditegakkan server-side.
 - **Platform**: Cloudflare Pages (Workers runtime) + D1
 - **Status**: ✅ ACTIVE — https://property-system.pages.dev
 - **Cloudflare Pages project**: `property-system` (production branch `main`)
-- **D1 database**: `property-system-production` (binding `DB`), 7 migrasi applied
-- **Build output**: `dist/` (`_worker.js` ~187 kB)
-- **Secrets**: `JWT_SECRET` di-set sebagai Pages secret produksi
-  (`wrangler pages secret put JWT_SECRET`); lihat `.env.example`. Secrets tidak
-  pernah di-commit (§45).
+- **D1 database**: `property-system-production` (binding `DB`), 8 migrasi applied
+- **Build output**: `dist/` (`_worker.js` ~201 kB)
+- **Secrets produksi**: `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `JWT_SECRET`
+  (encrypted Pages secret). Lihat `.env.example` dan
+  [`CLOUDFLARE_DEPLOYMENT.md`](./CLOUDFLARE_DEPLOYMENT.md). Secrets tidak pernah
+  di-commit (§45).
 
 ### First-time production setup
 
@@ -297,14 +326,18 @@ dibatalkan (harus di-end), dan otorisasi per-role ditegakkan server-side.
 npx wrangler d1 create property-system-production          # catat database_id → wrangler.jsonc
 npx wrangler pages project create property-system --production-branch main
 
-npm run db:migrate:prod                                    # 7 migrasi → D1 remote
-npm run db:bootstrap:prod                                  # reference data: 5 roles
+npm run db:migrate:prod                                    # 8 migrasi → D1 remote
 
-node scripts/gen-admin-credential.mjs                      # password + PBKDF2 hash
-# insert user ADMIN memakai hash tersebut (lihat header bootstrap-production.sql)
+# Secret produksi (nilai diminta interaktif, tidak masuk shell history)
+npx wrangler pages secret put ADMIN_EMAIL    --project-name property-system
+npx wrangler pages secret put ADMIN_PASSWORD --project-name property-system
+npx wrangler pages secret put JWT_SECRET     --project-name property-system
 
-npx wrangler pages secret put JWT_SECRET --project-name property-system
+npm run deploy:prod
 ```
+
+Admin dibuat otomatis pada request pertama setelah deploy — tidak ada langkah
+SQL manual, tidak ada hash yang perlu di-generate tangan.
 
 ### Redeploy
 
@@ -316,8 +349,8 @@ npm run deploy:prod
 ### Production data policy (§44)
 
 `seed.sql` adalah fixture **development** dan tidak pernah dijalankan terhadap D1
-remote. Produksi hanya di-bootstrap dengan reference data
-(`scripts/bootstrap-production.sql`) — nol property/tenant/lead palsu.
+remote. Produksi hanya berisi reference data (5 role) + 1 ADMIN hasil bootstrap —
+nol property/tenant/lead palsu.
 
 ## Traceability
 
